@@ -1,0 +1,62 @@
+-- blur_controller.script (Versión corregida para calcular velocidad)
+
+go.property("blur_quad_url", msg.url("/blur_quad#model")) -- ¡VERIFICA ESTA URL!
+go.property("blur_scale", 0.05) -- Multiplicador (ajusta según veas)
+
+local last_pos
+
+function init(self)
+    -- Obtener posición inicial del GO actual
+    last_pos = go.get_position()
+    print("Blur Controller iniciado. Calculando velocidad de este GO.")
+    print("Enviará parámetros a:", self.blur_quad_url)
+    -- Asegurarse de que la URL es válida al inicio (opcional)
+    if not go.exists(self.blur_quad_url) then
+        print("ERROR: No se encuentra el quad de post-proceso en la URL:", self.blur_quad_url)
+    end
+end
+
+function update(self, dt)
+    if dt <= 0 then return end
+
+    -- 1. Calcular velocidad simple (diferencia de posición de ESTE GO)
+    local current_pos = go.get_position() -- Posición actual de este GO
+    local velocity = vmath.vector3(0) -- Inicializar a cero
+    if last_pos then -- Asegurarse que last_pos tiene un valor
+        velocity = (current_pos - last_pos) / dt
+    end
+    last_pos = current_pos -- Actualizar para el próximo frame
+
+    -- 2. Calcular parámetros del shader
+    local blur_dir = vmath.vector4(0)
+    local blur_amount = 0.0
+    local speed = vmath.length(velocity)
+
+    -- Ajustar este umbral según sea necesario
+    if speed > 10.0 then -- Aplicar blur solo si la velocidad es significativa
+        local dir = vmath.normalize(velocity)
+        blur_dir.x = dir.x
+        blur_dir.y = dir.y
+        blur_amount = speed * self.blur_scale
+        -- Limitar cantidad máxima (ajústala experimentalmente)
+        blur_amount = math.min(blur_amount, 0.08) -- Límite más alto para probar
+        print("Velocidad:", speed, "Aplicando Blur - Dir:", dir.x, dir.y, "Amount:", blur_amount) -- Mensaje útil
+    else
+        -- print("Velocidad baja:", speed, "Sin Blur") -- Descomenta para depurar
+    end
+
+    -- Crear el vector de parámetros
+    local blur_params_vec = vmath.vector4(blur_amount, 0, 0, 0)
+
+    -- 3. Enviar los parámetros al material del quad usando go.set
+    --    Usamos pcall para evitar errores si la URL es incorrecta o el objeto no existe
+    local success, err = pcall(function()
+        go.set(self.blur_quad_url, "blur_direction", blur_dir)
+        go.set(self.blur_quad_url, "blur_params", blur_params_vec)
+    end)
+    if not success then
+        print("ERROR al enviar parámetros de blur:", err)
+        -- Podrías querer invalidar la URL aquí para no spammear errores
+        -- self.blur_quad_url = nil
+    end
+end

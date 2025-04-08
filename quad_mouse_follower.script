@@ -1,0 +1,70 @@
+--[[
+Seguidor Continuo de Ratón (Update + Set Position) - v23 Completo
+
+- PROPÓSITO: Mover ESTE objeto continuamente a la posición del ratón/touch usando update().
+- USO: Poner este script directamente en el Game Object 'blur_quad.go'.
+Se usa para mover el quad y así poder observar el efecto de
+motion blur que OTRO script ('blur_controller.script' en la "cabeza")
+calcula y aplica al material de este quad.
+- Este script NO calcula velocidad ni controla el blur, solo mueve el quad.
+]]
+
+-- Guarda la última Z conocida para mantenerla
+local current_z = 0
+-- Guarda la posición actual del ratón/touch. Se inicializa en init.
+local mouse_pos = vmath.vector3(0)
+
+-- INIT: Se ejecuta una vez al inicio
+function init(self)
+	-- Solicita recibir eventos de input (clics, touch, movimiento mapeado)
+	msg.post(".", "acquire_input_focus")
+
+	-- Obtiene la posición inicial del objeto donde está este script
+	local initial_pos = go.get_position()
+	-- Guarda la coordenada Z inicial para no modificarla
+	current_z = initial_pos.z
+	-- Establece la posición inicial del ratón a la del objeto
+	-- para que no salte al principio.
+	mouse_pos = vmath.vector3(initial_pos) -- Copia completa
+
+	print("Mouse Follower (v23 - Update) iniciado en", go.get_id(), "- Objeto seguirá al ratón.")
+	print("NOTA: Para seguimiento continuo en escritorio, se recomienda mapear MOUSE_MOVE a una acción en game.input_binding.")
+end
+
+-- FINAL: Se ejecuta al destruir el objeto
+function final(self)
+	-- Libera la recepción de input (buena práctica)
+	msg.post(".", "release_input_focus")
+end
+
+-- ON_INPUT: Se ejecuta cuando se recibe input
+function on_input(self, action_id, action)
+	-- Esta función SOLO actualiza la variable 'mouse_pos'
+	-- La función 'update' se encargará de mover el objeto.
+
+	-- Intenta usar hash("touch") primero, funciona en móviles y a veces en escritorio con clic/arrastre
+	if action_id == hash("touch") then
+		-- Actualizamos la posición del ratón guardada
+		mouse_pos.x = action.x
+		mouse_pos.y = action.y
+		mouse_pos.z = current_z -- Mantenemos la Z
+	end
+
+	-- **RECOMENDADO PARA ESCRITORIO:**
+	-- Si has mapeado MOUSE_MOVE a una acción llamada "mouse_position_update"
+	-- en tu archivo game.input_binding, descomenta esta parte:
+	--[[
+elseif action_id == hash("mouse_position_update") then
+	mouse_pos.x = action.x
+	mouse_pos.y = action.y
+	mouse_pos.z = current_z -- Mantenemos la Z
+end
+--]]
+end
+
+-- UPDATE: Se ejecuta cada frame
+function update(self, dt)
+-- Mueve ESTE objeto INSTANTÁNEAMENTE a la última posición
+-- registrada del ratón/touch (guardada en la variable 'mouse_pos').
+go.set_position(mouse_pos)
+end

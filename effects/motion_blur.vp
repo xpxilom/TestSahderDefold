@@ -1,0 +1,22 @@
+// motion_blur.vp
+// Pasa la posición del vértice y la coordenada de textura.
+
+// Posición del vértice en espacio de objeto (usado por el quad.mesh incorporado)
+attribute mediump vec4 position;
+// Coordenada de textura UV (0,0 a 1,1)
+attribute mediump vec2 texcoord0;
+
+// Matriz para transformar de espacio de objeto a espacio de clip (pantalla)
+// Defold la rellena automáticamente si se declara en el material.
+uniform mediump mat4 world_view_proj;
+
+// Pasar la coordenada de textura al fragment shader
+varying mediump vec2 var_texcoord0;
+
+void main()
+{
+    // Calcular la posición final del vértice en la pantalla
+    gl_Position = world_view_proj * position;
+    // Pasar la coordenada UV sin modificar
+    var_texcoord0 = texcoord0;
+}

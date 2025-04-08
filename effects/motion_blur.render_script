@@ -1,0 +1,149 @@
+-- my_post_render.render_script (v15 - Basado en el ejemplo funcional)
+
+
+
+function init(self)
+    print("DEBUG: [Render Script v17 INIT]")
+    -- Predicados de la escena principal
+    self.tile_pred = render.predicate({"tile"})
+    self.particle_pred = render.predicate({"particle"})
+    self.model_pred = render.predicate({"model"})
+    self.sprite_pred = render.predicate({"sprite"})
+    self.default_pred = render.predicate({"*"})
+
+    -- *** CORRECCIÓN: Añadir predicados GUI y TEXT ***
+    self.gui_pred = render.predicate({"gui"})
+    self.text_pred = render.predicate({"text"})
+
+    -- Predicado para el quad de post-proceso
+    self.post_process_pred = render.predicate({"post_process_quad"})
+
+    -- Color de fondo
+    self.clear_color = vmath.vector4(0, 0, 0, 0)
+    self.clear_color.x = sys.get_config("render.clear_color_red", 0.1)
+    self.clear_color.y = sys.get_config("render.clear_color_green", 0.1)
+    self.clear_color.z = sys.get_config("render.clear_color_blue", 0.1)
+    self.clear_color.w = sys.get_config("render.clear_color_alpha", 1.0)
+
+    -- Vista/Proyección principal
+    self.view = vmath.matrix4()
+    self.projection = vmath.matrix4()
+
+    -- Vista/Proyección para el quad
+    self.post_view = vmath.matrix4()
+    self.post_proj = vmath.matrix4_orthographic(-0.5, 0.5, -0.5, 0.5, -1, 1)
+
+    -- Render Target
+    local color_params = { format = render.FORMAT_RGBA, width = render.get_window_width(), height = render.get_window_height(), min_filter = render.FILTER_LINEAR, mag_filter = render.FILTER_LINEAR, u_wrap = render.WRAP_CLAMP_TO_EDGE, v_wrap = render.WRAP_CLAMP_TO_EDGE }
+    local depth_params = { format = render.FORMAT_DEPTH, width = render.get_window_width(), height = render.get_window_height() }
+    self.target = render.render_target("scene_target_v17", { [render.BUFFER_COLOR0_BIT] = color_params, [render.BUFFER_DEPTH_BIT] = depth_params })
+    if self.target == nil then print("ERROR: Falló creación RT v17 en init") end
+end
+
+function update(self, dt)
+-- Salir si el target no es válido
+if self.target == nil then
+    render.clear({[render.BUFFER_COLOR0_BIT] = vmath.vector4(1,0,0,1)}) -- Pantalla roja si falla
+    return
+end
+
+-- === PASO 1: Dibujar Escena al Render Target ===
+render.enable_render_target(self.target)
+render.set_depth_mask(true)
+render.clear({[render.BUFFER_COLOR0_BIT] = self.clear_color, [render.BUFFER_DEPTH_BIT] = 1})
+
+render.set_viewport(0, 0, render.get_window_width(), render.get_window_height())
+render.set_view(self.view)
+render.set_projection(self.projection)
+
+-- Habilitar estados necesarios para dibujar la escena
+render.enable_state(render.STATE_DEPTH_TEST)
+render.enable_state(render.STATE_BLEND)
+render.set_blend_func(render.BLEND_SRC_ALPHA, render.BLEND_ONE_MINUS_SRC_ALPHA)
+render.enable_state(render.STATE_CULL_FACE) -- Habilitar si tienes modelos 3D
+
+-- Dibujar los predicados que contienen tus objetos
+render.draw(self.tile_pred)     -- Si usas tiles
+render.draw(self.particle_pred) -- Si usas partículas
+render.draw(self.model_pred)    -- Si usas modelos
+render.draw(self.sprite_pred)   -- Si tus sprites tienen tag "sprite"
+render.draw(self.default_pred)  -- Dibuja todo lo demás (IMPORTANTE para sprites sin tag)
+
+-- Deshabilitar estados y el target
+render.disable_state(render.STATE_DEPTH_TEST)
+render.disable_state(render.STATE_BLEND)
+render.disable_state(render.STATE_CULL_FACE)
+render.set_depth_mask(false) -- Deshabilitar escritura de profundidad
+render.disable_render_target(self.target)
+
+
+-- === PASO 2: Dibujar Quad Post-Proceso a Pantalla ===
+-- Limpiar pantalla principal ANTES de dibujar el quad
+render.clear({[render.BUFFER_COLOR0_BIT] = self.clear_color, [render.BUFFER_DEPTH_BIT] = 1 })
+
+render.set_depth_mask(false)
+render.disable_state(render.STATE_DEPTH_TEST)
+render.disable_state(render.STATE_BLEND)
+render.disable_state(render.STATE_CULL_FACE)
+render.disable_state(render.STATE_STENCIL_TEST) -- Asegurarse de que stencil esté apagado
+
+render.set_viewport(0, 0, render.get_window_width(), render.get_window_height())
+render.set_view(self.post_view)      -- Vista identidad
+render.set_projection(self.post_proj) -- Proyección corregida (-0.5 a 0.5)
+
+render.enable_texture(0, self.target, render.BUFFER_COLOR0_BIT)
+render.draw(self.post_process_pred) -- Dibuja el quad (con tag "post_process_quad")
+render.disable_texture(0, self.target)
+
+
+-- === PASO 3: Dibujar GUI/Texto (Encima de todo) ===
+render.set_depth_mask(false) -- Ya estaba false
+render.disable_state(render.STATE_DEPTH_TEST) -- Ya estaba false
+render.enable_state(render.STATE_BLEND)
+render.set_blend_func(render.BLEND_SRC_ALPHA, render.BLEND_ONE_MINUS_SRC_ALPHA)
+-- No necesitamos Stencil Test para GUI simple
+-- render.enable_state(render.STATE_STENCIL_TEST)
+
+-- Usar la vista/proyección GUI del default
+local gui_projection = vmath.matrix4_orthographic(0, render.get_window_width(), 0, render.get_window_height(), -1, 1)
+render.set_view(vmath.matrix4()) -- Vista identidad para GUI suele estar bien
+render.set_projection(gui_projection)
+
+render.draw(self.gui_pred)
+render.draw(self.text_pred)
+
+render.disable_state(render.STATE_BLEND)
+-- render.disable_state(render.STATE_STENCIL_TEST)
+render.set_depth_mask(true) -- Restaurar para el próximo frame
+end
+
+
+function on_message(self, message_id, message)
+if message_id == hash("clear_color") then
+    self.clear_color = message.color
+elseif message_id == hash("set_view_projection") then
+    self.view = message.view
+    self.projection = message.projection -- Guardar proyección también
+elseif message_id == hash("window_resized") then
+    -- Recrear el render target con el nuevo tamaño
+    if self.target ~= nil then
+        render.delete_render_target(self.target)
+        self.target = nil
+    end
+    local color_params = {
+        format = render.FORMAT_RGBA,
+        width = message.width, height = message.height,
+        min_filter = render.FILTER_LINEAR, mag_filter = render.FILTER_LINEAR,
+        u_wrap = render.WRAP_CLAMP_TO_EDGE, v_wrap = render.WRAP_CLAMP_TO_EDGE
+    }
+    local depth_params = {
+        format = render.FORMAT_DEPTH,
+        width = message.width, height = message.height
+    }
+    self.target = render.render_target("scene_target_v15", {
+        [render.BUFFER_COLOR0_BIT] = color_params,
+        [render.BUFFER_DEPTH_BIT] = depth_params
+    })
+    if self.target == nil then print("ERROR: Falló recreación RT v15 en resize") end
+end
+end
